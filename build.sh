@@ -4,6 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+VERSION=0.2   # shown in the menu; bump it before each release and use the same release tag (v0.2)
+
 APP=build/dmg/TakoKey.app
 rm -rf build
 mkdir -p "$APP/Contents/MacOS"
@@ -21,7 +23,7 @@ done
 iconutil -c icns build/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
 
 # 3. The bundle's ID card. LSUIElement = menu-bar app, no Dock icon, no app switcher entry.
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -31,6 +33,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleIdentifier</key>     <string>io.github.bvpotapenko.takokey</string>
     <key>CFBundleName</key>           <string>TakoKey</string>
     <key>CFBundlePackageType</key>    <string>APPL</string>
+    <key>CFBundleShortVersionString</key> <string>$VERSION</string>
+    <key>CFBundleVersion</key>        <string>$VERSION</string>
     <key>LSMinimumSystemVersion</key> <string>13.0</string>
     <key>LSUIElement</key>            <true/>
 </dict>
@@ -45,6 +49,6 @@ codesign --force --sign - "$APP"
 ln -s /Applications build/dmg/Applications
 hdiutil create -volname TakoKey -srcfolder build/dmg -ov -format UDZO TakoKey.dmg
 
-echo "Built $(pwd)/TakoKey.dmg"
+echo "Built $(pwd)/TakoKey.dmg (version $VERSION)"
 echo "Or install directly (removes the old copy first, so macOS doesn't kill the new one):"
 echo "  pkill -x TakoKey; rm -rf /Applications/TakoKey.app && cp -R $APP /Applications/"
