@@ -1,0 +1,6 @@
+# Build output (make it again with ./build.sh)
+build/
+*.dmg
+
+# macOS Finder files
+.DS_Store
