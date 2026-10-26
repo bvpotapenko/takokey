@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION=0.3   # shown in the menu; bump it before each release and use the same release tag (v0.3)
+VERSION=1.0   
 
 APP=build/dmg/TakoKey.app
 rm -rf build
