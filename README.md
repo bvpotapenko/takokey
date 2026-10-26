@@ -38,7 +38,7 @@ cp -R build/dmg/TakoKey.app /Applications/ && open /Applications/TakoKey.app
 
 ## Settings
 
-Click the menu-bar icon > **Settings…**. Changes are saved right away. Click **Done** to close.
+Click the menu-bar icon > **Settings…**. Changes are saved right away. Press **Esc** to close.
 
 - Each language you have is in the list. Click its shortcut, then push the new keys. **Delete** removes the shortcut. **Esc** cancels.
 - Use ⌃, ⌥, or ⌘. You can also add ⇧. Keys: 0–9, A–Z.

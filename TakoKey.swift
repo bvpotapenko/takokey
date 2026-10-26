@@ -49,6 +49,8 @@ final class TakoKey: NSObject, ObservableObject, NSWindowDelegate {
     var shortcutList: [String] = []       // "⇧ ⌘ 1   ABC" lines for the About window
     var shortcuts: [String: String] = [:] // input source ID -> "cmd+shift+1", for Settings
     @Published var recording: String?     // Settings: input source ID waiting for its new keys
+    @Published var justSaved = false      // Settings: "Saved" shows for a moment after a change
+    var saves = 0                         // lets a newer save keep "Saved" up for its full time
     var keyMonitor: Any?                  // catches those keys
     var recordKeys: [UInt32: String] = [:] // while recording: hotkey id -> the shortcut it stands for
     var settingsWindow: NSWindow?
@@ -257,6 +259,15 @@ final class TakoKey: NSObject, ObservableObject, NSWindowDelegate {
         try? FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         try? (lines.joined(separator: "\n") + "\n").write(to: configURL, atomically: true, encoding: .utf8)
+        flashSaved()
+    }
+
+    // Settings: "Saved" in the bottom bar for two seconds.
+    func flashSaved() {
+        saves += 1
+        let save = saves
+        justSaved = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if save == self.saves { self.justSaved = false } }
     }
  
     // MARK: Input sources
@@ -450,7 +461,7 @@ final class TakoKey: NSObject, ObservableObject, NSWindowDelegate {
             let content = NSHostingView(rootView: SettingsView(tako: self)).fittingSize.height
             let height = min(content, (NSScreen.main?.visibleFrame.height ?? 800) - 80)
             settingsWindow = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(tako: self, height: height)))
-            settingsWindow?.title = "TakoKey Settings"
+            settingsWindow?.title = "TakoKey Settings — Esc to close"
             settingsWindow?.isReleasedWhenClosed = false   // we keep it and show it again
             settingsWindow?.delegate = self
         }
@@ -527,7 +538,7 @@ struct SettingsView: View {
                         get: { SMAppService.mainApp.status == .enabled },
                         set: { on in
                             _ = try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
-                            tako.objectWillChange.send()   // show what macOS did, even if it said no
+                            tako.flashSaved()   // also shows what macOS did, even if it said no
                         }
                     ))
                 }
@@ -589,11 +600,20 @@ struct SettingsView: View {
                 Button("Reset to Defaults") { tako.resetConfig() }
                     .help("Start again from the input sources you have now. The old settings are kept in ~/.config/takokey.txt.bak.")
                 Spacer()
-                Text("Changes are saved right away.").foregroundStyle(.secondary)
-                Button("Done") { tako.settingsWindow?.close() }
-                    .keyboardShortcut(.defaultAction)
+                // Esc closes the window. While recording, the recorder takes Esc first: it only cancels.
+                Button { tako.settingsWindow?.close() } label: {
+                    if tako.justSaved {
+                        Text("\(Image(systemName: "checkmark.circle.fill")) Saved. Press Esc to close.")
+                    } else {
+                        Text("Press Esc to close")
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(tako.justSaved ? Color.green : Color.secondary)
+                .keyboardShortcut(.cancelAction)
             }
             .padding()
+            .animation(.default, value: tako.justSaved)
         }
         .frame(width: 480, height: height)
     }
