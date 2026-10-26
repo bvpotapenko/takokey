@@ -34,34 +34,24 @@ cp -R build/dmg/TakoKey.app /Applications/ && open /Applications/TakoKey.app
 
 ## Settings
 
-Click the menu-bar icon > **Edit Config…**. Change the file, save it, and click **Reload Config**.
+Click the menu-bar icon > **Settings…**. Changes are saved right away. Click **Done** to close.
 
-```
-cmd+shift+1 = com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese  # Japanese
-cmd+shift+2 = com.apple.keylayout.Hawaiian                         # Hawaiian (ʻŌlelo Hawaiʻi)
-cmd+shift+6 = com.apple.keylayout.ABC                              # English
-cmd+shift+7 = com.apple.keylayout.German                           # German
-cmd+shift+8 = com.apple.keylayout.Russian                          # Russian
-cmd+shift+9 = com.apple.keylayout.Ukrainian-PC                     # Ukrainian
-cmd+shift+0 = com.apple.inputmethod.SCIM.ITABC                     # Chinese (Pinyin)
-```
-
-- Use `ctrl`, `opt`, or `cmd`. You can also add `shift`. Keys: `0`–`9`, `a`–`z`.
-- You cannot use `fn` (🌐). To use the 🌐 key, change it to Control in **System Settings > Keyboard > Keyboard Shortcuts > Modifier Keys**, and write `ctrl`.
-- If a line has an error, the icon changes to a warning triangle. The menu shows the line.
-- Did you add a language, or is the file broken? Click **Reset Settings**. TakoKey keeps the old file as `takokey.txt.bak`.
-- New settings use cmd+shift with 1, 2, 6–9 and 0. They skip 3, 4 and 5 because macOS takes screenshots with them.
+- Each language you have is in the list. Click its shortcut, then push the new keys. **Delete** removes the shortcut. **Esc** cancels.
+- Use ⌃, ⌥, or ⌘. You can also add ⇧. Keys: 0–9, A–Z.
+- New settings use ⇧⌘ with 1, 2, 7, 8, 9 and 0. They skip 3–6 because macOS takes screenshots with them.
+- You can also take over a macOS shortcut, like ⇧⌘3. While TakoKey runs, it changes the language instead. Settings shows a warning below it.
+- If another language or macOS also uses a shortcut, Settings shows a warning below it. TakoKey cannot see the shortcuts of other apps.
+- You cannot use `fn` (🌐). To use the 🌐 key, change it to Control in **System Settings > Keyboard > Keyboard Shortcuts > Modifier Keys**.
+- Did you add a language? It is in the list. Give it a shortcut. To start again from your current languages, click **Reset to Defaults**. TakoKey keeps the old file as `takokey.txt.bak`.
 - To start TakoKey automatically, add it in **System Settings > General > Login Items**.
+
+TakoKey keeps your settings in `~/.config/takokey.txt`. You can also edit this file. Then quit and start TakoKey again. If a line has an error, the icon changes to a warning triangle. The menu shows the line.
 
 ## Routes
 
 Some input methods, for example Chinese, stay active after you change the language. The menu bar shows the new language, but you type English. A route prevents this: TakoKey changes to English first, and then to your language.
 
-TakoKey adds routes for these input methods automatically:
-
-```
-route com.apple.inputmethod.SCIM.ITABC via com.apple.keylayout.ABC
-```
+TakoKey adds routes for these input methods automatically. To change them, go to **Settings… > Routes**.
 
 Does a different language have this problem? [Open an issue](../../issues).
 
