@@ -24,6 +24,7 @@ TakoKey gives each input language its own keyboard shortcut. When you push the s
 3. Start TakoKey. If macOS stops it, go to **System Settings > Privacy & Security** and click **Open Anyway**.
 
 To get a new version, click the menu-bar icon > **Check for Updates…**.
+Quit TakoKey before you replace the app. A running TakoKey stays the old version until you quit it.
 
 ## Build from source
 
@@ -46,7 +47,7 @@ Click the menu-bar icon > **Settings…**. Changes are saved right away. Click *
 - If another language or macOS also uses a shortcut, Settings shows a warning below it. TakoKey cannot see the shortcuts of other apps.
 - You cannot use `fn` (🌐). To use the 🌐 key, change it to Control in **System Settings > Keyboard > Keyboard Shortcuts > Modifier Keys**.
 - Did you add a language? It is in the list. Give it a shortcut. To start again from your current languages, click **Reset to Defaults**. TakoKey keeps the old file as `takokey.txt.bak`.
-- To start TakoKey automatically, add it in **System Settings > General > Login Items**.
+- To start TakoKey when you log in, turn on **Start TakoKey at login** in Settings.
 
 TakoKey keeps your settings in `~/.config/takokey.txt`. You can also edit this file. Then quit and start TakoKey again. If a line has an error, the icon changes to a warning triangle. The menu shows the line.
 
