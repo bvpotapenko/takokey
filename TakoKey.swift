@@ -10,6 +10,7 @@
 import AppKit   // menu bar, menus, files (also brings in Foundation)
 import Carbon   // global hotkeys and input sources (TIS...)
 import SwiftUI  // the Settings window
+import ServiceManagement  // start at login
 
 
 // Pause between the two hops of a route ("route X via Y" in the config).
@@ -519,6 +520,17 @@ struct SettingsView: View {
         let layouts = sources.filter(tako.isPlainLayout).map(tako.sourceID)
         VStack(spacing: 0) {
             Form {
+                Section {
+                    // A login item, like System Settings > General > Login Items. Read live from
+                    // macOS, so it also shows a change made there.
+                    Toggle("Start TakoKey at login", isOn: Binding(
+                        get: { SMAppService.mainApp.status == .enabled },
+                        set: { on in
+                            _ = try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+                            tako.objectWillChange.send()   // show what macOS did, even if it said no
+                        }
+                    ))
+                }
                 Section {
                     ForEach(sources.map(tako.sourceID), id: \.self) { id in
                         LabeledContent {
