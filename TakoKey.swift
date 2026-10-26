@@ -1,7 +1,7 @@
 // TakoKey - one hotkey combo per input source, like Windows' Ctrl+Shift+1/2/3.
 // Copyright (C) 2026 Bogdan Potapenko, https://potapenko.ai. SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Config: ~/.config/takokey.txt — generated on first launch from your enabled input sources. Edit it, then click the menu-bar icon -> Reload Config.
+// Config: ~/.config/takokey.txt — generated on first launch from your enabled input sources. Change it in the menu-bar icon -> Settings
 //
 // Build:  ./build.sh   (needs only Xcode Command Line Tools: xcode-select --install)
 //
@@ -9,6 +9,7 @@
 
 import AppKit   // menu bar, menus, files (also brings in Foundation)
 import Carbon   // global hotkeys and input sources (TIS...)
+import SwiftUI  // the Settings window
 
 
 // Pause between the two hops of a route ("route X via Y" in the config).
@@ -36,7 +37,7 @@ let warmUpStep = 0.2   // seconds
 
 let repoURL = "https://github.com/bvpotapenko/takokey"
 
-final class TakoKey: NSObject {
+final class TakoKey: NSObject, ObservableObject, NSWindowDelegate {
     let configURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".config/takokey.txt")
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -44,7 +45,12 @@ final class TakoKey: NSObject {
     var targets: [UInt32: String] = [:]   // hotkey id -> input source ID
     var routes: [String: String] = [:]    // input source ID -> source to pass through when leaving it
     var lastRequest = 0                   // lets a newer press cancel a route's pending second hop
-    var shortcutList: [String] = []       // "ctrl+shift+1   ABC" lines for the About window
+    var shortcutList: [String] = []       // "⇧ ⌘ 1   ABC" lines for the About window
+    var shortcuts: [String: String] = [:] // input source ID -> "cmd+shift+1", for Settings
+    @Published var recording: String?     // Settings: input source ID waiting for its new keys
+    var keyMonitor: Any?                  // catches those keys
+    var recordKeys: [UInt32: String] = [:] // while recording: hotkey id -> the shortcut it stands for
+    var settingsWindow: NSWindow?
     var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev" }
  
     // Physical keys, named by their US-layout label.
@@ -58,7 +64,15 @@ final class TakoKey: NSObject {
         "u": kVK_ANSI_U, "v": kVK_ANSI_V, "w": kVK_ANSI_W, "x": kVK_ANSI_X, "y": kVK_ANSI_Y,
         "z": kVK_ANSI_Z,
     ]
- 
+
+    static func keyName(_ code: Int) -> String? { keyCodes.first { $0.value == code }?.key }
+
+    // The modifiers in the order macOS shows them: Carbon bit, AppKit flag, config word, symbol.
+    static let modifiers: [(carbon: Int, flag: NSEvent.ModifierFlags, word: String, symbol: String)] = [
+        (controlKey, .control, "ctrl", "⌃"), (optionKey, .option, "opt", "⌥"),
+        (shiftKey, .shift, "shift", "⇧"), (cmdKey, .command, "cmd", "⌘"),
+    ]
+
     override init() {
         super.init()
         // One handler for all our hotkeys; the hotkey's id says which binding fired.
@@ -70,7 +84,11 @@ final class TakoKey: NSObject {
                               EventParamType(typeEventHotKeyID), nil,
                               MemoryLayout<EventHotKeyID>.size, nil, &hotKey)
             let me = Unmanaged<TakoKey>.fromOpaque(userData!).takeUnretainedValue()
-            if let sourceID = me.targets[hotKey.id] { me.select(sourceID) }
+            if let shortcut = me.recordKeys[hotKey.id] {
+                me.finishRecording(shortcut)
+            } else if let sourceID = me.targets[hotKey.id] {
+                me.select(sourceID)
+            }
             return noErr
         }, 1, &pressed, Unmanaged.passUnretained(self).toOpaque(), nil)
         reload()
@@ -82,13 +100,14 @@ final class TakoKey: NSObject {
     @objc func reload() {
         if !FileManager.default.fileExists(atPath: configURL.path) { writeDefaultConfig() }
         hotKeys.forEach { UnregisterEventHotKey($0) }
+        objectWillChange.send()   // Settings shows what we read below
         hotKeys = []
         targets = [:]
         routes = [:]
         shortcutList = []
+        shortcuts = [:]
  
         let menu = NSMenu()
-        var routeLines: [String] = []
         var problems: [String] = []
         let text = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
         for (index, rawLine) in text.components(separatedBy: .newlines).enumerated() {
@@ -100,14 +119,11 @@ final class TakoKey: NSObject {
             if line.hasPrefix("route ") {
                 let ids = line.dropFirst(6).components(separatedBy: " via ")
                     .map { $0.trimmingCharacters(in: .whitespaces) }
-                guard ids.count == 2, !ids[0].isEmpty, let via = inputSource(ids[1]) else {
+                guard ids.count == 2, !ids[0].isEmpty, inputSource(ids[1]) != nil else {
                     problems.append("line \(lineNo): expected  route <ID> via <enabled ID>"); continue
                 }
                 routes[ids[0]] = ids[1]
-                if let from = inputSource(ids[0]) {   // only list routes for sources you have
-                    routeLines.append("↪ leaving \(property(from, kTISPropertyLocalizedName)): "
-                                      + "via \(property(via, kTISPropertyLocalizedName))")
-                }
+                
                 continue
             }
  
@@ -116,6 +132,7 @@ final class TakoKey: NSObject {
             guard parts.count == 2 else {
                 problems.append("line \(lineNo): expected  shortcut = input-source-ID"); continue
             }
+            shortcuts[parts[1]] = parts[0]   // even if it fails below: Settings shows it with a warning
             guard let source = inputSource(parts[1]) else {
                 problems.append("line \(lineNo): no enabled input source \(parts[1])"); continue
             }
@@ -123,34 +140,37 @@ final class TakoKey: NSObject {
                 problems.append("line \(lineNo): \(problem)"); continue
             }
             targets[lineNo] = parts[1]
-            shortcutList.append("\(parts[0])   \(property(source, kTISPropertyLocalizedName))")
-            let item = NSMenuItem(title: "\(parts[0])   \(property(source, kTISPropertyLocalizedName))",
-                                  action: #selector(pick(_:)), keyEquivalent: "")
+            let name = property(source, kTISPropertyLocalizedName)
+            shortcutList.append("\(TakoKey.symbols(parts[0]))   \(name)")
+            // The shortcut shows on the right, the way macOS menus show theirs.
+            let combo = TakoKey.combo(parts[0])!   // register() just accepted it
+            let item = NSMenuItem(title: name, action: #selector(pick(_:)), keyEquivalent: TakoKey.keyName(combo[0])!)
+            item.keyEquivalentModifierMask = NSEvent.ModifierFlags(
+                TakoKey.modifiers.filter { combo[1] & $0.carbon != 0 }.map { $0.flag })
+
             item.target = self
             item.representedObject = parts[1]
             menu.addItem(item)
         }
         // Items without an action show greyed out: information only.
-        for line in routeLines + problems.map({ "⚠︎ " + $0 }) {
+        for line in problems.map({ "⚠︎ " + $0 }) {
             menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
         }
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Edit Config…", action: #selector(editConfig), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Reload Config", action: #selector(reload), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Reset Settings", action: #selector(resetConfig), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit TakoKey", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(withTitle: "About TakoKey \(version)", action: #selector(showAbout), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Quit TakoKey", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
         statusItem.button?.image = NSImage(
             systemSymbolName: problems.isEmpty ? "keyboard" : "exclamationmark.triangle",
             accessibilityDescription: "TakoKey")
     }
  
-    // "ctrl+shift+1" -> a registered global hotkey. Returns what's wrong, or nil on success.
-    // Shift alone is refused: shift+1 would hijack typing "!".
-    func register(_ shortcut: String, id: UInt32) -> String? {
+     // "cmd+shift+1" -> [physical key code, Carbon modifiers], or nil if a word is unknown
+    // (fn included: macOS reserves it).
+    static func combo(_ shortcut: String) -> [Int]? {
         var modifiers = 0
         var keyCode: Int?
         for word in shortcut.lowercased().split(separator: "+").map({ $0.trimmingCharacters(in: .whitespaces) }) {
@@ -159,16 +179,36 @@ final class TakoKey: NSObject {
             case "opt", "option", "alt": modifiers |= optionKey
             case "cmd", "command": modifiers |= cmdKey
             case "shift": modifiers |= shiftKey
-            case "fn", "globe": return "fn is reserved by macOS; use ctrl, opt or cmd (if you remapped 🌐, write the key it became)"
             default:
-                guard keyCode == nil, let code = TakoKey.keyCodes[word] else { return "unknown key \(word)" }
+                guard keyCode == nil, let code = keyCodes[word] else { return nil }
                 keyCode = code
             }
         }
-        guard let keyCode else { return "no key in \(shortcut)" }
-        guard modifiers & ~shiftKey != 0 else { return "\(shortcut) needs ctrl, opt or cmd" }
+        return keyCode.map { [$0, modifiers] }
+    }
+
+    // [key code, Carbon modifiers] -> "shift+cmd+1", modifiers in the order macOS shows them.
+    static func shortcut(_ combo: [Int]) -> String {
+        (modifiers.filter { combo[1] & $0.carbon != 0 }.map { $0.word } + [keyName(combo[0]) ?? "?"]).joined(separator: "+")
+    }
+
+
+    // "cmd+shift+1" -> "⇧⌘1", the way macOS writes shortcuts.
+    static func symbols(_ shortcut: String) -> String {
+        guard let combo = combo(shortcut) else { return shortcut }
+        return modifiers.filter { combo[1] & $0.carbon != 0 }.map { $0.symbol }.joined()
+            + keyName(combo[0])!.uppercased()
+    }
+
+    // "ctrl+shift+1" -> a registered global hotkey. Returns what's wrong, or nil on success.
+    // Shift alone is refused: shift+1 would hijack typing "!".
+    func register(_ shortcut: String, id: UInt32) -> String? {
+        guard let combo = TakoKey.combo(shortcut) else {
+            return "can't read \(shortcut): use ctrl, opt, cmd, shift and one key 0-9 or a-z"
+        }
+        guard combo[1] & ~shiftKey != 0 else { return "\(shortcut) needs ctrl, opt or cmd" }
         var ref: EventHotKeyRef?
-        let status = RegisterEventHotKey(UInt32(keyCode), UInt32(modifiers),
+        let status = RegisterEventHotKey(UInt32(combo[0]), UInt32(combo[1]),
                                          EventHotKeyID(signature: 0, id: id),
                                          GetApplicationEventTarget(), 0, &ref)
         guard status == noErr, let ref else { return "macOS refused \(shortcut) (error \(status))" }
@@ -176,65 +216,42 @@ final class TakoKey: NSObject {
         return nil
     }
  
-    // First launch: bind cmd+shift+1, 2, 6…9, 0 to the enabled input sources (3, 4, 5 take
+    // First launch: bind cmd+shift+1, 2, 7…9, 0 to the enabled input sources (3…6 take
     // macOS screenshots), and route every input method (plus the known sticky ones) through an English layout.
     func writeDefaultConfig() {
-        let filter: [String: Any] = [
-            kTISPropertyInputSourceCategory as String: kTISCategoryKeyboardInputSource as String,
-            kTISPropertyInputSourceIsSelectCapable as String: true,
-        ]
-        let enabled = TISCreateInputSourceList(filter as CFDictionary, false)?
-            .takeRetainedValue() as? [TISInputSource] ?? []
-        let id = { (s: TISInputSource) in self.property(s, kTISPropertyInputSourceID) }
-        let name = { (s: TISInputSource) in self.property(s, kTISPropertyLocalizedName) }
-        let isLayout = { (s: TISInputSource) in
-            self.property(s, kTISPropertyInputSourceType) == kTISTypeKeyboardLayout as String
-        }
+        let enabled = enabledSources()
         // The safe stop for routes: ABC or U.S., else any plain layout that types Latin letters.
-        let english = enabled.first { ["com.apple.keylayout.ABC", "com.apple.keylayout.US"].contains(id($0)) }
-            ?? enabled.first { isLayout($0) && self.isASCIICapable($0) }
- 
+        let english = enabled.first { ["com.apple.keylayout.ABC", "com.apple.keylayout.US"].contains(sourceID($0)) }
+            ?? enabled.first { isPlainLayout($0) && isASCIICapable($0) }
+        let keys = ["1", "2", "7", "8", "9", "0"]   // cmd+shift+3…6 take screenshots (6: of the Touch Bar)
+        shortcuts = [:]
+        for (key, source) in zip(keys, enabled) { shortcuts[sourceID(source)] = "shift+cmd+\(key)" }
+        routes = [:]
+        if let english {   // none: no routes, the user can pick one in Settings
+            for from in enabled.filter({ !isPlainLayout($0) }).map(sourceID) + knownSticky.map({ $0.0 }) {
+                routes[from] = sourceID(english)
+            }
+        }
+        writeConfig()
+    }
+
+    // Shortcuts and routes -> the config file. Settings calls this, then reload().
+    func writeConfig() {
+        let order = enabledSources().map(sourceID)   // languages in System Settings order
+        let rank = { (id: String) in (order.firstIndex(of: id) ?? order.count, id) }
         var lines = [
-            "# TakoKey settings. Text after # is ignored.",
-            "# After you change this file: menu-bar icon -> Reload Config.",
-            "# To start again from your current input sources: menu-bar icon -> Reset Settings",
-            "# (your old file is kept as takokey.txt.bak).",
-            "",
-            "# ---- Shortcuts --------------------------------------------------------------",
-            "# Format:     shortcut = input-source-ID",
-            "# Modifiers:  ctrl (or control), opt (or option, alt), cmd (or command), shift",
-            "#             Use at least one of ctrl / opt / cmd. fn (🌐) can't be used: macOS reserves it.",
-            "#             Avoid cmd+shift+3, 4, 5: macOS takes screenshots with them.",
-            "# Example:    ctrl+opt+r = com.apple.keylayout.Romanian",
+            "# TakoKey settings. Change them in the menu-bar icon -> Settings…",
+            "# You can also edit this file by hand; then quit and reopen TakoKey. Text after # is ignored.",
+            "#   shortcut = input-source-ID     ctrl, opt, cmd, shift + one key 0-9 or a-z",
+            "#   route <from-ID> via <via-ID>   when you leave <from-ID>, pass through <via-ID> first",
             "",
         ]
-        let keys = ["1", "2", "6", "7", "8", "9", "0"]   // cmd+shift+3, 4, 5 take screenshots
-        for (i, source) in enabled.enumerated() {
-            let shortcut = i < keys.count ? "cmd+shift+\(keys[i])" : "# cmd+shift+?"
-            lines.append("\(shortcut) = \(id(source))   # \(name(source))")
+        for id in shortcuts.keys.sorted(by: { rank($0) < rank($1) }) {
+            lines.append("\(shortcuts[id]!) = \(id)   # \(name(id))")
         }
-        lines += [
-            "",
-            "# ---- Routing ----------------------------------------------------------------",
-            "# Some input methods (Chinese, Japanese, Korean...) stick: after you switch away,",
-            "# the menu bar shows the new language, but you still type in another one.",
-            "# A route fixes this: ",
-            "#      when you leave <from-ID>, TakoKey first switches to <via-ID>, then to your target.",
-            "# Format:",     
-            "#      route <from-ID> via <via-ID>",
-            "#",
-            "# <via-ID> must be an enabled plain layout, usually English (ABC or U.S.).",
-            "# Routes for input sources you don't have are ignored, so it's safe to keep them all.",
-            "",
-        ]
-        var routed = enabled.filter { !isLayout($0) }.map { (id($0), name($0)) }
-        for known in knownSticky where !routed.contains(where: { $0.0 == known.0 }) { routed.append(known) }
-        if english == nil {
-            lines.append("# No English layout is enabled. Add ABC in System Settings, then delete this file and Reload.")
-        }
-        let viaID = english.map(id) ?? "com.apple.keylayout.ABC"
-        for (fromID, fromName) in routed {
-            lines.append("\(english == nil ? "# " : "")route \(fromID) via \(viaID)   # \(fromName)")
+        lines.append("")
+        for (from, via) in routes.sorted(by: { $0.key < $1.key }) {
+            lines.append("route \(from) via \(via)   # \(name(from))")
         }
         try? FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
@@ -286,6 +303,51 @@ final class TakoKey: NSObject {
         property(source, kTISPropertyInputSourceType) == kTISTypeKeyboardLayout as String
     }
 
+    // Input sources turned on in System Settings, in their order there.
+    func enabledSources() -> [TISInputSource] {
+        let filter: [String: Any] = [
+            kTISPropertyInputSourceCategory as String: kTISCategoryKeyboardInputSource as String,
+            kTISPropertyInputSourceIsSelectCapable as String: true,
+        ]
+        return TISCreateInputSourceList(filter as CFDictionary, false)?.takeRetainedValue() as? [TISInputSource] ?? []
+    }
+
+    func sourceID(_ source: TISInputSource) -> String { property(source, kTISPropertyInputSourceID) }
+
+    // The Routes list: your input methods, then the known sticky ones and any other route in
+    // the file, so they're ready the day you add that language.
+    func routeIDs() -> [String] {
+        var ids = enabledSources().filter { !isPlainLayout($0) }.map(sourceID)
+        for id in knownSticky.map({ $0.0 }) + routes.keys.sorted() where !ids.contains(id) { ids.append(id) }
+        return ids
+    }
+
+    func name(_ id: String) -> String {
+        inputSource(id).map { property($0, kTISPropertyLocalizedName) } ?? knownSticky.first { $0.0 == id }?.1 ?? id
+    }
+
+    // Why a language's shortcut may not work, for Settings. nil = fine, as far as we can tell:
+    // other apps' global shortcuts can't be seen, and TakoKey wins over shortcuts inside apps.
+    func warning(_ id: String) -> String? {
+        guard let shortcut = shortcuts[id] else { return nil }
+        guard let combo = TakoKey.combo(shortcut) else { return "TakoKey can't read \(shortcut)" }
+        if let other = shortcuts.first(where: { $0.key != id && TakoKey.combo($0.value) == combo }) {
+            return "Also the shortcut for \(name(other.key))"
+        }
+        return macOSShortcuts().contains(combo) ? "Takes over a macOS shortcut (System Settings > Keyboard > Keyboard Shortcuts)" : nil
+    }
+
+    // macOS's own shortcuts that are on (System Settings > Keyboard > Keyboard Shortcuts),
+    // as [key code, Carbon modifiers] like combo().
+    func macOSShortcuts() -> [[Int]] {
+        var list: Unmanaged<CFArray>?
+        CopySymbolicHotKeys(&list)
+        return (list?.takeRetainedValue() as? [[String: Any]] ?? [])
+            .filter { ($0[kHISymbolicHotKeyEnabled as String] as? Bool) == true }
+            .map { [$0[kHISymbolicHotKeyCode as String] as? Int ?? -1,
+                    ($0[kHISymbolicHotKeyModifiers as String] as? Int ?? 0) & (controlKey | optionKey | shiftKey | cmdKey)] }
+    }
+
     // macOS bug: after TakoKey is installed, the first switch into an input method (Pinyin,
     // Kana...) shows in the menu bar but types plain letters until you switch away and back.
     // So do that once at start: a plain layout, then each input method, then back to where you
@@ -312,8 +374,7 @@ final class TakoKey: NSObject {
             Your shortcuts:
             \(shortcutList.isEmpty ? "(none yet)" : shortcutList.joined(separator: "\n"))
 
-            Settings: ~/.config/takokey.txt
-            To change them: menu-bar icon → Edit Config…
+            To change them: menu-bar icon -> Settings…
 
             © 2026 Bogdan Potapenko
             github.com/bvpotapenko/takokey
@@ -371,7 +432,6 @@ final class TakoKey: NSObject {
     }
 
     @objc func pick(_ item: NSMenuItem) { select(item.representedObject as! String) }
-    @objc func editConfig() { NSWorkspace.shared.open(configURL) }
  
     // Keep the old file as takokey.txt.bak (one level of undo), then write fresh defaults.
     @objc func resetConfig() {
@@ -379,6 +439,151 @@ final class TakoKey: NSObject {
         try? FileManager.default.removeItem(at: backup)
         try? FileManager.default.moveItem(at: configURL, to: backup)
         reload()   // no config file -> reload writes the defaults
+    }
+
+     // MARK: Settings window
+
+    @objc func showSettings() {
+        if settingsWindow == nil {
+            // As tall as its content, but no taller than the screen: then it scrolls.
+            let content = NSHostingView(rootView: SettingsView(tako: self)).fittingSize.height
+            let height = min(content, (NSScreen.main?.visibleFrame.height ?? 800) - 80)
+            settingsWindow = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(tako: self, height: height)))
+            settingsWindow?.title = "TakoKey Settings"
+            settingsWindow?.isReleasedWhenClosed = false   // we keep it and show it again
+            settingsWindow?.delegate = self
+        }
+        NSApp.activate(ignoringOtherApps: true)   // a menu-bar app must come forward to show a window
+        settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    // Wait for the next key press in Settings and make it the shortcut for `id`.
+    // Delete removes the shortcut, Esc cancels. Our hotkeys are off meanwhile, so a combo
+    // that's already in use reaches us instead of switching the language.
+    func record(_ id: String) {
+        let again = recording == id
+        stopRecording()
+        if again { return }   // a second click cancels
+        hotKeys.forEach { UnregisterEventHotKey($0) }
+        hotKeys = []
+        recording = id
+        // Shortcuts macOS keeps for itself (⇧⌘3 takes a screenshot) never reach this window,
+        // but a hotkey beats them. So while we wait, each one is a hotkey too (see init).
+        for (i, combo) in macOSShortcuts().enumerated() where TakoKey.keyName(combo[0]) != nil {
+            let hotKeyID = UInt32(10_000 + i)   // above any config line number
+            if register(TakoKey.shortcut(combo), id: hotKeyID) == nil { recordKeys[hotKeyID] = TakoKey.shortcut(combo) }
+        }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let modifiers = TakoKey.modifiers.filter { event.modifierFlags.contains($0.flag) }.reduce(0) { $0 | $1.carbon }
+            if TakoKey.keyName(Int(event.keyCode)) != nil, modifiers & ~shiftKey != 0 {
+                self.finishRecording(TakoKey.shortcut([Int(event.keyCode), modifiers]))
+            } else if [kVK_Delete, kVK_ForwardDelete].contains(Int(event.keyCode)) {
+                self.finishRecording(nil)
+            } else if Int(event.keyCode) == kVK_Escape {
+                self.stopRecording()
+            } else {
+                NSSound.beep()   // not a shortcut TakoKey can use; keep waiting
+            }
+            return nil
+        }
+    }
+
+    // The recorder's answer: the new shortcut for the language being recorded (nil removes it).
+    func finishRecording(_ shortcut: String?) {
+        guard let id = recording else { return }
+        shortcuts[id] = shortcut
+        writeConfig()
+        stopRecording()
+    }
+
+    func stopRecording() {
+        guard let keyMonitor else { return }
+        NSEvent.removeMonitor(keyMonitor)
+        self.keyMonitor = nil
+        recording = nil
+        recordKeys = [:]
+        reload()   // hotkeys back on, with the new shortcut
+    }
+
+    // Leaving the window (or closing it) cancels a recording, so the hotkeys never stay off.
+    func windowDidResignKey(_ notification: Notification) { stopRecording() }
+    func windowWillClose(_ notification: Notification) { NSApp.hide(nil) }   // focus back to your app
+}
+
+struct SettingsView: View {
+    @ObservedObject var tako: TakoKey
+    var height: CGFloat?   // nil: as tall as the content (to measure it), else scroll inside this
+
+    var body: some View {
+        let sources = tako.enabledSources()
+        let layouts = sources.filter(tako.isPlainLayout).map(tako.sourceID)
+        VStack(spacing: 0) {
+            Form {
+                Section {
+                    ForEach(sources.map(tako.sourceID), id: \.self) { id in
+                        LabeledContent {
+                            Button(tako.recording == id ? "Press keys…" : tako.shortcuts[id].map(TakoKey.symbols) ?? "Set…") {
+                                tako.record(id)
+                            }
+                        } label: {
+                            Text(tako.name(id))
+                            if tako.recording == id {
+                              Text("Press the new keys. Esc cancels, Delete removes the shortcut.")
+                            } else if let warning = tako.warning(id) {
+                                Text("⚠︎ " + warning).foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Shortcuts")
+                } footer: {
+                    Text("""
+                        Click a shortcut, then press the new keys. Use ⌃, ⌥ or ⌘, plus ⇧ if you like, \
+                        with 0–9 or A–Z. These are physical keys, so they work in every layout.
+                        You can take over a macOS shortcut too, like ⇧⌘3 for screenshots: while TakoKey \
+                        runs, it changes the language instead.
+                        You can't use fn (🌐). To use the 🌐 key, change it to Control in \
+                        System Settings > Keyboard > Keyboard Shortcuts > Modifier Keys.
+                        """)
+                }
+                Section {
+                    ForEach(tako.routeIDs(), id: \.self) { id in
+                      Picker(selection: Binding(
+                          get: { tako.routes[id] ?? "" },
+                          set: { tako.routes[id] = $0.isEmpty ? nil : $0; tako.writeConfig(); tako.reload() }
+                      )) {
+                          Text("Direct").tag("")
+                          ForEach(layouts, id: \.self) { Text("via " + tako.name($0)).tag($0) }
+                      } label: {
+                          Text(tako.name(id))
+                          if tako.inputSource(id) == nil { Text("Not on this Mac yet") }
+                      }
+                  }
+                } header: {
+                    Text("Routes")
+                } footer: {
+                    Text("""
+                        Some input methods (Chinese, Japanese, Korean…) stick: after you switch away, \
+                        the menu bar shows the new language, but you still type in the old one. A route \
+                        fixes this: when you leave the input method, TakoKey first switches to the layout \
+                        you pick here (usually English), then to your language.
+                        """)
+                }
+            }
+            .formStyle(.grouped)
+            .fixedSize(horizontal: false, vertical: height == nil)
+            Divider()
+            HStack {
+                Button("Reset to Defaults") { tako.resetConfig() }
+                    .help("Start again from the input sources you have now. The old settings are kept in ~/.config/takokey.txt.bak.")
+                Spacer()
+                Text("Changes are saved right away.").foregroundStyle(.secondary)
+                Button("Done") { tako.settingsWindow?.close() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding()
+        }
+        .frame(width: 480, height: height)
     }
 }
  
