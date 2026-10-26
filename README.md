@@ -12,7 +12,10 @@ TakoKey gives each input language its own keyboard shortcut. When you push the s
 ## Requirements
 
 - A Mac with Apple silicon (M1 or later).
-- macOS 13 or later. Tested on macOS 26.6.2.
+- macOS 13 or later. Tested on: 
+    - macOS 26.6.2
+    - macOS 26.7.1
+    - macOS Golden Gate 27.0.1.
 
 ## Install
 
