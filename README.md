@@ -6,7 +6,7 @@ Got more than two languages on your Mac and tired of juggling them? So was I. No
 
 TakoKey gives each input language its own keyboard shortcut. When you push the shortcut, your Mac changes to that language immediately.
 
-> *Tako* (タコ) is Japanese for octopus. **ta-ko-key** - that's the beat of **Ctrl-Shift-1**.  
+> *Tako* (タコ) is Japanese for octopus. **ta-ko-key** - that's the beat of **Cmd-Shift-1**.  
 
 
 ## Requirements
@@ -37,19 +37,20 @@ cp -R build/dmg/TakoKey.app /Applications/ && open /Applications/TakoKey.app
 Click the menu-bar icon > **Edit Config…**. Change the file, save it, and click **Reload Config**.
 
 ```
-ctrl+shift+1 = com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese  # Japanese
-ctrl+shift+2 = com.apple.keylayout.Hawaiian                         # Hawaiian (ʻŌlelo Hawaiʻi)
-ctrl+shift+3 = com.apple.keylayout.ABC                              # English
-ctrl+shift+4 = com.apple.keylayout.German                           # German
-ctrl+shift+5 = com.apple.keylayout.Russian                          # Russian
-ctrl+shift+6 = com.apple.keylayout.Ukrainian-PC                     # Ukrainian
-ctrl+shift+7 = com.apple.inputmethod.SCIM.ITABC                     # Chinese (Pinyin)
+cmd+shift+1 = com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese  # Japanese
+cmd+shift+2 = com.apple.keylayout.Hawaiian                         # Hawaiian (ʻŌlelo Hawaiʻi)
+cmd+shift+6 = com.apple.keylayout.ABC                              # English
+cmd+shift+7 = com.apple.keylayout.German                           # German
+cmd+shift+8 = com.apple.keylayout.Russian                          # Russian
+cmd+shift+9 = com.apple.keylayout.Ukrainian-PC                     # Ukrainian
+cmd+shift+0 = com.apple.inputmethod.SCIM.ITABC                     # Chinese (Pinyin)
 ```
 
 - Use `ctrl`, `opt`, or `cmd`. You can also add `shift`. Keys: `0`–`9`, `a`–`z`.
 - You cannot use `fn` (🌐). To use the 🌐 key, change it to Control in **System Settings > Keyboard > Keyboard Shortcuts > Modifier Keys**, and write `ctrl`.
 - If a line has an error, the icon changes to a warning triangle. The menu shows the line.
 - Did you add a language, or is the file broken? Click **Reset Settings**. TakoKey keeps the old file as `takokey.txt.bak`.
+- New settings use cmd+shift with 1, 2, 6–9 and 0. They skip 3, 4 and 5 because macOS takes screenshots with them.
 - To start TakoKey automatically, add it in **System Settings > General > Login Items**.
 
 ## Routes

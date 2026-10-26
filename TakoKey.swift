@@ -176,8 +176,8 @@ final class TakoKey: NSObject {
         return nil
     }
  
-    // First launch: bind ctrl+shift+1…9 to the enabled input sources, and route every
-    // input method (plus the known sticky ones) through an English layout.
+    // First launch: bind cmd+shift+1, 2, 6…9, 0 to the enabled input sources (3, 4, 5 take
+    // macOS screenshots), and route every input method (plus the known sticky ones) through an English layout.
     func writeDefaultConfig() {
         let filter: [String: Any] = [
             kTISPropertyInputSourceCategory as String: kTISCategoryKeyboardInputSource as String,
@@ -204,12 +204,13 @@ final class TakoKey: NSObject {
             "# Format:     shortcut = input-source-ID",
             "# Modifiers:  ctrl (or control), opt (or option, alt), cmd (or command), shift",
             "#             Use at least one of ctrl / opt / cmd. fn (🌐) can't be used: macOS reserves it.",
-            "# Keys:       0-9 and a-z. They are physical keys, so they work in every layout.",
+            "#             Avoid cmd+shift+3, 4, 5: macOS takes screenshots with them.",
             "# Example:    ctrl+opt+r = com.apple.keylayout.Romanian",
             "",
         ]
+        let keys = ["1", "2", "6", "7", "8", "9", "0"]   // cmd+shift+3, 4, 5 take screenshots
         for (i, source) in enabled.enumerated() {
-            let shortcut = i < 9 ? "ctrl+shift+\(i + 1)" : "# ctrl+shift+?"
+            let shortcut = i < keys.count ? "cmd+shift+\(keys[i])" : "# cmd+shift+?"
             lines.append("\(shortcut) = \(id(source))   # \(name(source))")
         }
         lines += [
