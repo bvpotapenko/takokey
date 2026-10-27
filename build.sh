@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION=1.0   
+VERSION=1.0.0
 
 APP=build/dmg/TakoKey.app
 rm -rf build
@@ -47,7 +47,7 @@ codesign --force --sign - "$APP"
 
 # 5. DMG = the app plus an /Applications shortcut to drag it onto.
 ln -s /Applications build/dmg/Applications
-hdiutil create -volname TakoKey -srcfolder build/dmg -ov -format UDZO TakoKey.dmg
+hdiutil create -volname TakoKey -srcfolder build/dmg -ov -format UDZO TakoKey-$VERSION.dmg
 
 echo "Built $(pwd)/TakoKey.dmg (version $VERSION)"
 echo "Or install directly (removes the old copy first, so macOS doesn't kill the new one):"
