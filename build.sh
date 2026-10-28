@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION=1.0.0
+VERSION=1.0.1
 
 APP=build/dmg/TakoKey.app
 rm -rf build
@@ -45,10 +45,13 @@ PLIST
 #    and signing the whole bundle seals the Info.plist to the binary.
 codesign --force --sign - "$APP"
 
+# Homebrew needs only the app, not the DMG: ./build.sh --app-only
+[ "${1:-}" = "--app-only" ] && exit 0
+
 # 5. DMG = the app plus an /Applications shortcut to drag it onto.
 ln -s /Applications build/dmg/Applications
-hdiutil create -volname TakoKey -srcfolder build/dmg -ov -format UDZO TakoKey-$VERSION.dmg
+hdiutil create -volname TakoKey -srcfolder build/dmg -ov -format UDZO TakoKey.dmg
 
 echo "Built $(pwd)/TakoKey.dmg (version $VERSION)"
-echo "Or install directly (removes the old copy first, so macOS doesn't kill the new one):"
-echo "  pkill -x TakoKey; rm -rf /Applications/TakoKey.app && cp -R $APP /Applications/"
+echo "Or install directly (quits the old copy, replaces it, starts the new one):"
+echo "  pkill -x TakoKey; rm -rf /Applications/TakoKey.app && cp -R $APP /Applications/ && open /Applications/TakoKey.app"

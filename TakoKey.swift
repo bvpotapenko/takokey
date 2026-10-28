@@ -41,6 +41,10 @@ let repoURL = "https://github.com/bvpotapenko/takokey"
 final class TakoKey: NSObject, ObservableObject, NSWindowDelegate {
     let configURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".config/takokey.txt")
+    // Start at login: a LaunchAgent file that runs TakoKey from stablePath. (SMAppService
+    // would remember Homebrew's per-version folder, which the next upgrade deletes.)
+    let loginAgent = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/LaunchAgents/io.github.bvpotapenko.takokey.plist")    
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     var hotKeys: [EventHotKeyRef] = []
     var targets: [UInt32: String] = [:]   // hotkey id -> input source ID
@@ -56,6 +60,39 @@ final class TakoKey: NSObject, ObservableObject, NSWindowDelegate {
     var settingsWindow: NSWindow?
     var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev" }
  
+    // Where the app stays across updates. Homebrew puts each version in its own Cellar
+    // folder and deletes the old one; its opt/ link always points to the current version.
+    static var stablePath: String {
+        let path = Bundle.main.bundlePath
+        return path.contains("/Cellar/takokey/") ? "/opt/homebrew/opt/takokey/TakoKey.app" : path
+    }
+    static var viaBrew: Bool { stablePath.hasPrefix("/opt/homebrew/opt/") }
+
+    // What "Copy Command" puts on the clipboard: update, then restart TakoKey.
+    // The sleep lets the old copy exit, so the new one can take the shortcuts.
+    static let brewUpdate = #"brew upgrade takokey && pkill -x TakoKey; sleep 1; open "$(brew --prefix)/opt/takokey/TakoKey.app""#
+
+    var startsAtLogin: Bool {
+        get { FileManager.default.fileExists(atPath: loginAgent.path) }
+        set {
+            objectWillChange.send()
+            if newValue {
+                let agent: NSDictionary = [
+                    "Label": "io.github.bvpotapenko.takokey",
+                    "ProgramArguments": [TakoKey.stablePath + "/Contents/MacOS/TakoKey"],
+                    "RunAtLoad": true,
+                    "ProcessType": "Interactive", // an app the user types with, not a background job
+                ]
+                try? FileManager.default.createDirectory(at: loginAgent.deletingLastPathComponent(),
+                                                         withIntermediateDirectories: true)
+                agent.write(to: loginAgent, atomically: true)
+            } else {
+                try? FileManager.default.removeItem(at: loginAgent)
+            }
+            flashSaved()
+        }
+    }
+
     // Physical keys, named by their US-layout label.
     static let keyCodes: [String: Int] = [
         "0": kVK_ANSI_0, "1": kVK_ANSI_1, "2": kVK_ANSI_2, "3": kVK_ANSI_3, "4": kVK_ANSI_4,
@@ -402,8 +439,7 @@ final class TakoKey: NSObject, ObservableObject, NSWindowDelegate {
     }
 
     // Show the window at once ("Checking…"), ask GitHub for the latest release, and fill in the
-    // answer when it arrives. No auto-install: the app is not signed, so macOS asks
-    // "Open Anyway" for every downloaded copy in any case.
+    // answer when it arrives. No auto-install: Homebrew users run brew, DMG users replace the app.
     @objc func checkForUpdates() {
         let alert = NSAlert()
         alert.messageText = "Checking for updates…"
@@ -411,35 +447,45 @@ final class TakoKey: NSObject, ObservableObject, NSWindowDelegate {
         let mainButton = alert.addButton(withTitle: "Open GitHub")
         alert.addButton(withTitle: "Close")
         var link = repoURL
-
+        var copyCommand = false // Homebrew: the main button copies brewUpdate instead
         var request = URLRequest(url: URL(string: "https://api.github.com/repos/bvpotapenko/takokey/releases/latest")!)
-        request.timeoutInterval = 10   // GitHub can be slow or blocked on some networks
+        request.timeoutInterval = 10 // GitHub can be slow or blocked on some networks
         URLSession.shared.dataTask(with: request) { data, _, _ in
             let release = data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
-            let tag = release?["tag_name"] as? String   // e.g. "v0.3"
-            DispatchQueue.main.async {   // runs while the window is open
+            let tag = release?["tag_name"] as? String // e.g. "v1.0.1"
+            DispatchQueue.main.async { // runs while the window is open
                 guard let tag else { alert.messageText = "Can't reach GitHub. Try again later."; return }
                 let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
                 switch latest.compare(self.version, options: .numeric) {
                 case .orderedDescending:
                     alert.messageText = "TakoKey v\(latest) is available"
-                    alert.informativeText = "You have v\(self.version). Download the new DMG, quit TakoKey, and replace the app."
-                    mainButton.title = "Download"
-                    link = repoURL + "/releases/latest"
+                    if TakoKey.viaBrew {
+                        alert.informativeText = "You have v\(self.version). Paste this in Terminal. It updates and restarts TakoKey:\n\n\(TakoKey.brewUpdate)"
+                        mainButton.title = "Copy Command"
+                        copyCommand = true
+                    } else {
+                        alert.informativeText = "You have v\(self.version). Download the new DMG, quit TakoKey, and replace the app."
+                        mainButton.title = "Download"
+                        link = repoURL + "/releases/latest"
+                    }
                 case .orderedSame:
                     alert.messageText = "Your TakoKey v\(self.version) is up to date"
-                case .orderedAscending:   // e.g. a build made before its release is published
+                case .orderedAscending: // e.g. a build made before its release is published
                     alert.messageText = "Your TakoKey v\(self.version) is newer than the latest release (v\(latest))"
                 }
                 alert.layout()
             }
         }.resume()
-
-        NSApp.activate(ignoringOtherApps: true)   // a menu-bar app must come forward to show a dialog
+        NSApp.activate(ignoringOtherApps: true) // a menu-bar app must come forward to show a dialog
         if alert.runModal() == .alertFirstButtonReturn {
-            NSWorkspace.shared.open(URL(string: link)!)
+            if copyCommand {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(TakoKey.brewUpdate, forType: .string)
+            } else {
+                NSWorkspace.shared.open(URL(string: link)!)
+            }
         } else {
-            NSApp.hide(nil)   // give focus back to the app you were using
+            NSApp.hide(nil) // give focus back to the app you were using
         }
     }
 
@@ -532,15 +578,8 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    // A login item, like System Settings > General > Login Items. Read live from
-                    // macOS, so it also shows a change made there.
-                    Toggle("Start TakoKey at login", isOn: Binding(
-                        get: { SMAppService.mainApp.status == .enabled },
-                        set: { on in
-                            _ = try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
-                            tako.flashSaved()   // also shows what macOS did, even if it said no
-                        }
-                    ))
+                    // On when ~/Library/LaunchAgents/io.github.bvpotapenko.takokey.plist exists.
+                    Toggle("Start TakoKey at login", isOn: $tako.startsAtLogin)
                 }
                 Section {
                     ForEach(sources.map(tako.sourceID), id: \.self) { id in
