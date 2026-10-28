@@ -19,12 +19,27 @@ TakoKey gives each input language its own keyboard shortcut. When you push the s
 
 ## Install
 
-1. Download `TakoKey.dmg` from [Releases](../../releases).
-2. Open the DMG. Move TakoKey to Applications.
-3. Start TakoKey. If macOS stops it, go to **System Settings > Privacy & Security** and click **Open Anyway**.
+**With Homebrew:**
 
-To get a new version, click the menu-bar icon > **Check for Updates…**.
-Quit TakoKey before you replace the app. A running TakoKey stays the old version until you quit it.
+```
+brew install bvpotapenko/tap/takokey
+open $(brew --prefix)/opt/takokey/TakoKey.app
+```
+
+To update: menu-bar icon > **Check for Updates…** > **Copy Command**, then paste it in Terminal. It updates and restarts TakoKey.
+
+**Without Homebrew:**
+
+paste this in Terminal ([read the script](https://github.com/bvpotapenko/takokey/blob/main/install.sh)):
+
+```
+curl -fsSL https://raw.githubusercontent.com/bvpotapenko/takokey/main/install.sh | bash
+```
+
+Run it again to update.  
+Or download `TakoKey.dmg` from [Releases](https://github.com/bvpotapenko/takokey/releases) and move TakoKey to Applications.  
+If macOS stops it, go to **System Settings > Privacy & Security** and click **Open Anyway**.
+
 
 ## Build from source
 
