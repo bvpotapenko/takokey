@@ -62,11 +62,13 @@ final class TakoKey: NSObject, ObservableObject, NSWindowDelegate {
  
     // Where the app stays across updates. Homebrew puts each version in its own Cellar
     // folder and deletes the old one; its opt/ link always points to the current version.
+    // Homebrew lives in /opt/homebrew on Apple silicon and in /usr/local on Intel.
     static var stablePath: String {
         let path = Bundle.main.bundlePath
-        return path.contains("/Cellar/takokey/") ? "/opt/homebrew/opt/takokey/TakoKey.app" : path
+        guard path.contains("/Cellar/takokey/") else { return path }
+        return path.components(separatedBy: "/Cellar/")[0] + "/opt/takokey/TakoKey.app"
     }
-    static var viaBrew: Bool { stablePath.hasPrefix("/opt/homebrew/opt/") }
+    static var viaBrew: Bool { stablePath.hasSuffix("/opt/takokey/TakoKey.app") }
 
     // What "Copy Command" puts on the clipboard: update, then restart TakoKey.
     // The sleep lets the old copy exit, so the new one can take the shortcuts.

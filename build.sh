@@ -4,15 +4,17 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION=1.0.1
+VERSION=1.1.0
 
 APP=build/dmg/TakoKey.app
 rm -rf build
 mkdir -p "$APP/Contents/MacOS"
 
-# 1. Compile. arm64 only: every M-series Mac runs it natively.
-swiftc -O -swift-version 5 -target arm64-apple-macos13 \
-    TakoKey.swift -o "$APP/Contents/MacOS/TakoKey"
+# 1. Compile for Apple silicon and Intel, then join both into one universal binary.
+for arch in arm64 x86_64; do
+    swiftc -O -swift-version 5 -target $arch-apple-macos13 TakoKey.swift -o build/TakoKey-$arch
+done
+lipo -create build/TakoKey-arm64 build/TakoKey-x86_64 -output "$APP/Contents/MacOS/TakoKey"
 
 # 2. App icon: icon.png -> AppIcon.icns with every size Finder asks for.
 mkdir -p "$APP/Contents/Resources" build/AppIcon.iconset
