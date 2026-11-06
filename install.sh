@@ -4,8 +4,6 @@
 # Files curl downloads get no quarantine flag, so macOS doesn't ask "Open Anyway".
 set -euo pipefail
 
-if [ "$(uname -m)" != arm64 ]; then echo "TakoKey needs a Mac with Apple silicon."; exit 1; fi
-
 tmp=$(mktemp -d)
 trap 'hdiutil detach -quiet "$tmp/mnt" 2>/dev/null || true; rm -rf "$tmp"' EXIT
 

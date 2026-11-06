@@ -11,7 +11,7 @@ TakoKey gives each input language its own keyboard shortcut. When you push the s
 
 ## Requirements
 
-- A Mac with Apple silicon (M1 or later).
+- A Mac with Apple silicon or Intel. Intel Macs are not tested yet. If something doesn't work, [open an issue](../../issues).
 - macOS 13 or later. Tested on: 
     - macOS 26.6.2
     - macOS 26.7.1
