@@ -21,15 +21,46 @@ let routeDelay = 0.03   // seconds
 // a repeat makes it show the right one (like pressing the shortcut twice). 0 = off.
 let popupFixDelay = 0.03   // seconds
  
-// Input methods known to "stick" when you leave them. Written as routes into a new config
-// even when not installed, so they work the day you add them. A wrong ID here is harmless:
-// routes for input sources you don't have never fire.
+// Input methods known to "stick" when you leave them: every Chinese, Japanese, Korean and
+// Vietnamese (CJKV) one in macOS. Written as routes into a new config even when not
+// installed, so they work the day you add them. A wrong ID here is harmless: routes for
+// input sources you don't have never fire. (Listed by hand on purpose: once an app asks
+// macOS for all installed sources, macOS starts listing some you never added as enabled.)
 let knownSticky: [(String, String)] = [
     ("com.apple.inputmethod.SCIM.ITABC", "Chinese, Pinyin – Simplified"),
+    ("com.apple.inputmethod.SCIM.Shuangpin", "Chinese, Shuangpin – Simplified"),
+    ("com.apple.inputmethod.SCIM.WBX", "Chinese, Wubi – Simplified"),
+    ("com.apple.inputmethod.SCIM.WBH", "Chinese, Stroke – Simplified"),
     ("com.apple.inputmethod.TCIM.Pinyin", "Chinese, Pinyin – Traditional"),
+    ("com.apple.inputmethod.TCIM.Shuangpin", "Chinese, Shuangpin – Traditional"),
     ("com.apple.inputmethod.TCIM.Zhuyin", "Chinese, Zhuyin"),
-    ("com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese", "Japanese, Romaji"),
+    ("com.apple.inputmethod.TCIM.ZhuyinEten", "Chinese, Zhuyin Eten"),
+    ("com.apple.inputmethod.TCIM.Cangjie", "Chinese, Cangjie"),
+    ("com.apple.inputmethod.TCIM.Jianyi", "Chinese, Sucheng"),
+    ("com.apple.inputmethod.TCIM.WBH", "Chinese, Stroke – Traditional"),
+    ("com.apple.inputmethod.TYIM.Phonetic", "Cantonese, Phonetic"),
+    ("com.apple.inputmethod.TYIM.Cangjie", "Cantonese, Cangjie"),
+    ("com.apple.inputmethod.TYIM.Sucheng", "Cantonese, Sucheng"),
+    ("com.apple.inputmethod.TYIM.Stroke", "Cantonese, Stroke"),
+    ("com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese", "Japanese, Romaji – Hiragana"),
+    ("com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese.Katakana", "Japanese, Romaji – Katakana"),
+    ("com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese.HalfWidthKana", "Japanese, Romaji – Half-width Katakana"),
+    ("com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese.FullWidthRoman", "Japanese, Romaji – Full-width Romaji"),
+    ("com.apple.inputmethod.Kotoeri.RomajiTyping.Roman", "Japanese, Romaji – Romaji"),
+    ("com.apple.inputmethod.Kotoeri.KanaTyping.Japanese", "Japanese, Kana – Hiragana"),
+    ("com.apple.inputmethod.Kotoeri.KanaTyping.Japanese.Katakana", "Japanese, Kana – Katakana"),
+    ("com.apple.inputmethod.Kotoeri.KanaTyping.Japanese.HalfWidthKana", "Japanese, Kana – Half-width Katakana"),
+    ("com.apple.inputmethod.Kotoeri.KanaTyping.Japanese.FullWidthRoman", "Japanese, Kana – Full-width Romaji"),
+    ("com.apple.inputmethod.Kotoeri.KanaTyping.Roman", "Japanese, Kana – Romaji"),
     ("com.apple.inputmethod.Korean.2SetKorean", "Korean, 2-Set"),
+    ("com.apple.inputmethod.Korean.3SetKorean", "Korean, 3-Set"),
+    ("com.apple.inputmethod.Korean.390Sebulshik", "Korean, 3-Set (390)"),
+    ("com.apple.inputmethod.Korean.GongjinCheongRomaja", "Korean, GongjinCheong Romaja"),
+    ("com.apple.inputmethod.Korean.HNCRomaja", "Korean, HNC Romaja"),
+    ("com.apple.inputmethod.VietnameseIM.VietnameseTelex", "Vietnamese, Telex"),
+    ("com.apple.inputmethod.VietnameseIM.VietnameseSimpleTelex", "Vietnamese, Simple Telex"),
+    ("com.apple.inputmethod.VietnameseIM.VietnameseVNI", "Vietnamese, VNI"),
+    ("com.apple.inputmethod.VietnameseIM.VietnameseVIQR", "Vietnamese, VIQR"),
 ]
  
 // Pause between the steps of the start-up warm-up (see warmUp). Keep it above
@@ -259,7 +290,7 @@ final class TakoKey: NSObject, ObservableObject, NSWindowDelegate {
     }
  
     // First launch: bind cmd+shift+1, 2, 7…9, 0 to the enabled input sources (3…6 take
-    // macOS screenshots), and route every input method (plus the known sticky ones) through an English layout.
+    // macOS screenshots), and route every enabled input method (plus all CJKV ones) through an English layout.
     func writeDefaultConfig() {
         let enabled = enabledSources()
         // The safe stop for routes: ABC or U.S., else any plain layout that types Latin letters.
@@ -365,11 +396,11 @@ final class TakoKey: NSObject, ObservableObject, NSWindowDelegate {
 
     func sourceID(_ source: TISInputSource) -> String { property(source, kTISPropertyInputSourceID) }
 
-    // The Routes list: your input methods, then the known sticky ones and any other route in
-    // the file, so they're ready the day you add that language.
+    // The Routes list: your input methods, then any other route in the file for a language you
+    // have. Routes for languages you haven't added stay in the file, ready for the day you add them.
     func routeIDs() -> [String] {
         var ids = enabledSources().filter { !isPlainLayout($0) }.map(sourceID)
-        for id in knownSticky.map({ $0.0 }) + routes.keys.sorted() where !ids.contains(id) { ids.append(id) }
+        for id in routes.keys.sorted() where !ids.contains(id) && inputSource(id) != nil { ids.append(id) }
         return ids
     }
 
@@ -620,14 +651,13 @@ struct SettingsView: View {
                           ForEach(layouts, id: \.self) { Text("via " + tako.name($0)).tag($0) }
                       } label: {
                           Text(tako.name(id))
-                          if tako.inputSource(id) == nil { Text("Not on this Mac yet") }
                       }
                   }
                 } header: {
                     Text("Routes")
                 } footer: {
                     Text("""
-                        Some input methods (Chinese, Japanese, Korean…) stick: after you switch away, \
+                        Some input methods (Chinese, Japanese, Korean, Vietnamese…) stick: after you switch away, \
                         the menu bar shows the new language, but you still type in the old one. A route \
                         fixes this: when you leave the input method, TakoKey first switches to the layout \
                         you pick here (usually English), then to your language.

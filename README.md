@@ -1,21 +1,24 @@
 <img src="icon.png" width="128" alt="TakoKey icon">
 
-# TakoKey
+# TakoKey: language switcher for Mac
 
-Got more than two languages on your Mac and tired of juggling them? So was I. Not anymore!
+I have 3+ languages on my Mac and use all of them every day. Switching with Ctrl+Space, the default macOS way, was too slow. I had to go through the list to find the one I needed. Years ago on Windows, I could set a key combination for each language, like Ctrl+Shift+1, 2, 3. Now I have the same on my Mac, and I'm happy to share it with you.
 
-TakoKey gives each input language its own keyboard shortcut. When you push the shortcut, your Mac changes to that language immediately.
+TakoKey is a language switcher for Mac. It gives each input language its own keyboard shortcut. When you push the shortcut, your Mac changes to that language immediately. You can set up any combination you like for any language your Mac has. It is a free, open-source menu-bar app and needs no Accessibility permission.
 
-> *Tako* (タコ) is Japanese for octopus. **ta-ko-key** - that's the beat of **Cmd-Shift-1**.  
+It works with Chinese, Japanese, Korean and Vietnamese (CJKV) input methods: Pinyin, Wubi, Zhuyin, Cangjie, Cantonese, Japanese Romaji and Kana, Korean, Vietnamese Telex and VNI. These can stay active after you switch away. TakoKey fixes that with [routes](#routes).
+
+> *Tako* (タコ) is Japanese for octopus. **ta-ko-key** - the same rhythm as **Cmd-Shift-1**.  
 
 
 ## Requirements
 
 - A Mac with Apple silicon or Intel. Intel Macs are not tested yet. If something doesn't work, [open an issue](../../issues).
-- macOS 13 or later. Tested on: 
+- macOS 13 Ventura or later. Tested on: 
     - macOS 26.6.2
     - macOS 26.7.1
     - macOS Golden Gate 27.0.1.
+    - macOS Golden Gate 27.2.1
 
 ## Install
 
@@ -68,9 +71,9 @@ TakoKey keeps your settings in `~/.config/takokey.txt`. You can also edit this f
 
 ## Routes
 
-Some input methods, for example Chinese, stay active after you change the language. The menu bar shows the new language, but you type English. A route prevents this: TakoKey changes to English first, and then to your language.
+Chinese, Japanese, Korean and Vietnamese input methods can stay active after you change the language. The menu bar shows the new language, but you type English. A route prevents this: TakoKey changes to English first, and then to your language.
 
-TakoKey adds routes for these input methods automatically. To change them, go to **Settings… > Routes**.
+TakoKey adds routes for every CJKV input method in macOS: Chinese (Pinyin, Shuangpin, Wubi, Stroke, Zhuyin, Cangjie, Sucheng), Cantonese, Japanese (Romaji and Kana typing, all modes), Korean (2-Set, 3-Set, Romaja) and Vietnamese (Telex, Simple Telex, VNI, VIQR). It also adds a route for any other input method you have when TakoKey first starts. To change them, go to **Settings… > Routes**.
 
 Does a different language have this problem? [Open an issue](../../issues).
 
