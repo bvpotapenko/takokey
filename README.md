@@ -2,6 +2,8 @@
 
 # TakoKey: language switcher for Mac
 
+Website: [takokey.potapenko.ai](https://takokey.potapenko.ai/)
+
 I have 3+ languages on my Mac and use all of them every day. Switching with Ctrl+Space, the default macOS way, was too slow. I had to go through the list to find the one I needed. Years ago on Windows, I could set a key combination for each language, like Ctrl+Shift+1, 2, 3. Now I have the same on my Mac, and I'm happy to share it with you.
 
 TakoKey is a language switcher for Mac. It gives each input language its own keyboard shortcut. When you push the shortcut, your Mac changes to that language immediately. You can set up any combination you like for any language your Mac has. It is a free, open-source menu-bar app and needs no Accessibility permission.
